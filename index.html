@@ -51,28 +51,28 @@
         <div class="preset"><button type="button" data-amount="50000">5만원</button><button type="button" data-amount="100000">10만원</button><button type="button" data-amount="200000">20만원</button></div>
         <label>메모 <em>선택</em><input id="detail" maxlength="80" placeholder="소속이나 구분"></label>
         <button class="save" type="submit">저장</button>
-        <p class="local-note">추가 내역은 현재 기기에만 저장됩니다.</p>
+        <p class="local-note">추가 내역은 모든 접속자에게 공유됩니다.</p>
       </form>
     </section>
   </div>
   <script>
     (() => {
-      const KEY="bujo-ledger-manual-v1", won=new Intl.NumberFormat("ko-KR"), collator=new Intl.Collator("ko-KR",{sensitivity:"base",numeric:true});
-      const base=Array.isArray(window.BUJO_DATA)?window.BUJO_DATA:[]; let manual=[],filter="전체",query="",visible=30,addType="계좌",sortMode="name";
-      try{manual=JSON.parse(localStorage.getItem(KEY)||"[]");if(!Array.isArray(manual))manual=[]}catch{manual=[]}
+      const SUPABASE_URL="https://oqyyqrltxlsmwizwuoyc.supabase.co", SUPABASE_KEY="sb_publishable_aUWwSY8XtK762YQ_yuVAnQ_iNfTV5T6", API=SUPABASE_URL+"/rest/v1/manual_entries", won=new Intl.NumberFormat("ko-KR"), collator=new Intl.Collator("ko-KR",{sensitivity:"base",numeric:true});
+      const base=Array.isArray(window.BUJO_DATA)?window.BUJO_DATA:[]; let manual=[],filter="전체",query="",visible=30,addType="계좌",sortMode="name",loaded=false;
       const $=id=>document.getElementById(id), fmt=n=>won.format(n)+"원", norm=s=>(s||"").replace(/\s/g,"").toLocaleLowerCase("ko-KR");
       function scoped(){return [...base.map((x,i)=>({...x,_order:i})),...manual.map((x,i)=>({...x,_order:base.length+i}))].filter(x=>filter==="전체"||x.type===filter).sort((a,b)=>filter==="계좌"&&sortMode==="seq"?a._order-b._order:collator.compare(norm(a.name),norm(b.name)))}
       function render(){
         const scope=scoped(), total=scope.reduce((s,x)=>s+x.amount,0);
         $("sumLabel").textContent=filter+" 합계";$("sumAmount").textContent=fmt(total);$("sumMeta").textContent=won.format(scope.length)+"건";$("sorter").style.display=filter==="계좌"?"grid":"none";
         const found=scope.filter(x=>!query||norm(x.name).includes(norm(query))||norm(x.detail).includes(norm(query)));
-        $("resultCount").textContent=found.length+"건";$("footer").textContent="기본 명부 "+base.length+"건 · 이 기기에서 추가 "+manual.length+"건";
+        $("resultCount").textContent=found.length+"건";$("footer").textContent="기본 명부 "+base.length+"건 · 공유 추가 "+manual.length+"건";
         $("results").innerHTML=found.length?found.slice(0,visible).map(x=>`<article class="row"><div class="mark ${x.type==="현금"?"cash":""}">${x.type==="현금"?"현":"계"}</div><div class="donor"><strong>${esc(x.name)}</strong><span>${x.type}${x.local?" · 수동 추가":""}</span>${x.detail?`<p>${esc(x.detail)}</p>`:""}</div><strong class="amount">${fmt(x.amount)}</strong></article>`).join(""):`<div class="empty">검색 결과가 없어요.</div>`;
         $("more").style.display=visible<found.length?"block":"none";
         const counts=new Map;scope.forEach(x=>counts.set(x.amount,(counts.get(x.amount)||0)+1));
         $("stats").innerHTML=[...counts].sort((a,b)=>b[1]-a[1]||a[0]-b[0]).map(([a,c])=>`<div><span>${a>=10000?won.format(a/10000)+"만원":fmt(a)}</span><strong>${c}건</strong></div>`).join("");
       }
       function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+      async function loadManual(){try{const response=await fetch(API+"?select=id,name,amount,type,detail,created_at&order=created_at.asc",{headers:{apikey:SUPABASE_KEY}});if(!response.ok)throw new Error("load "+response.status);manual=(await response.json()).map(x=>({...x,local:true}));loaded=true;render()}catch{$("notice").textContent="공유 명부를 불러오지 못했어요. 데이터베이스 설정을 확인해 주세요.";$("notice").style.display="block";render()}}
       document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{filter=b.dataset.filter;visible=30;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x===b));render()});
       document.querySelectorAll("[data-sort]").forEach(b=>b.onclick=()=>{sortMode=b.dataset.sort;visible=30;document.querySelectorAll("[data-sort]").forEach(x=>x.classList.toggle("active",x===b));render()});
       $("search").oninput=e=>{query=e.target.value;visible=30;$("clear").style.display=query?"grid":"none";render()};
@@ -83,8 +83,8 @@
       $("backdrop").onclick=e=>{if(e.target===$("backdrop"))$("backdrop").style.display="none"};
       document.querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{addType=b.dataset.type;document.querySelectorAll("[data-type]").forEach(x=>x.classList.toggle("active",x===b))});
       document.querySelectorAll("[data-amount]").forEach(b=>b.onclick=()=>$("amount").value=b.dataset.amount);
-      $("addForm").onsubmit=e=>{e.preventDefault();const item={name:$("name").value.trim(),amount:Number($("amount").value),type:addType,detail:$("detail").value.trim(),local:true};if(!item.name||!Number.isInteger(item.amount)||item.amount<1)return;manual.push(item);localStorage.setItem(KEY,JSON.stringify(manual));filter=addType;visible=30;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x.dataset.filter===filter));$("backdrop").style.display="none";$("name").value="";$("detail").value="";$("notice").textContent=item.name+"님을 이 기기에 추가했어요.";$("notice").style.display="block";render()};
-      const unlock=()=>{$("lock").hidden=true;$("app").hidden=false;sessionStorage.setItem("bujo-ledger-unlocked","1");render()};
+      $("addForm").onsubmit=async e=>{e.preventDefault();const item={name:$("name").value.trim(),amount:Number($("amount").value),type:addType,detail:$("detail").value.trim()};if(!item.name||!Number.isInteger(item.amount)||item.amount<1)return;const save=e.submitter;save.disabled=true;save.textContent="저장 중...";try{const response=await fetch(API,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify(item)});if(!response.ok)throw new Error("save "+response.status);const [saved]=await response.json();manual.push({...saved,local:true});filter=addType;visible=30;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x.dataset.filter===filter));$("backdrop").style.display="none";$("name").value="";$("detail").value="";$("notice").textContent=item.name+"님이 공유 명부에 추가됐어요.";$("notice").style.display="block";render()}catch{$("notice").textContent="저장하지 못했어요. 잠시 후 다시 시도해 주세요.";$("notice").style.display="block"}finally{save.disabled=false;save.textContent="저장"}};
+      const unlock=()=>{$("lock").hidden=true;$("app").hidden=false;sessionStorage.setItem("bujo-ledger-unlocked","1");render();if(!loaded)loadManual()};
       $("lockForm").onsubmit=e=>{e.preventDefault();if($("password").value==="1788")unlock();else{$("lockError").textContent="비밀번호가 맞지 않아요.";$("password").select()}};
       if(sessionStorage.getItem("bujo-ledger-unlocked")==="1")unlock();else setTimeout(()=>$("password").focus(),50);
     })();
